@@ -1,6 +1,7 @@
 
 import { createContext, useContext, useEffect } from 'react';
 import { auth, googleProvider, db, ensureFirebase } from '@/lib/firebase';
+import { consumeGoogleRedirectResult } from '@/lib/googleAuthRedirect';
 import {
   signInWithRedirect,
   getRedirectResult,
@@ -44,30 +45,42 @@ export function AuthProvider({ children }) {
         return;
       }
 
+      let redirectUser = null;
       try {
-        await getRedirectResult(auth);
+        const redirectResult = await consumeGoogleRedirectResult(auth, getRedirectResult);
+        redirectUser = redirectResult?.user || null;
+        if (redirectResult?.user) {
+          try { sessionStorage.removeItem('oa_google_redirect'); } catch {}
+        }
       } catch (err) {
         if (err?.code && err.code !== 'auth/null-user') {
           console.warn('[auth] Google redirect sign-in:', err.code, err.message);
+          try {
+            sessionStorage.setItem('oa_auth_error', err.message || err.code);
+          } catch {}
         }
       }
 
       if (cancelled) return;
 
+      let firstAuthEvent = true;
       unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
+      const activeUser = firebaseUser || (firstAuthEvent ? redirectUser : null);
+      firstAuthEvent = false;
 
-        const userRef = doc(db, 'users', firebaseUser.uid);
+      if (activeUser) {
+
+        const userRef = doc(db, 'users', activeUser.uid);
         getDoc(userRef).then(snap => {
           const invitedBy = (() => {
             try { return sessionStorage.getItem('af_invite_ref') || null; } catch { return null; }
           })();
           if (!snap?.exists()) {
             setDoc(userRef, {
-              uid: firebaseUser.uid,
-              email: firebaseUser.email,
-              displayName: firebaseUser.displayName,
-              photoURL: firebaseUser.photoURL,
+              uid: activeUser.uid,
+              email: activeUser.email,
+              displayName: activeUser.displayName,
+              photoURL: activeUser.photoURL,
               role: 'user',
               invitedBy: invitedBy || null,
               createdAt: new Date().toISOString(),
@@ -78,14 +91,14 @@ export function AuthProvider({ children }) {
           try { sessionStorage.removeItem('af_invite_ref'); } catch {}
         }).catch(() => {});
 
-        setUser(firebaseUser);
+        setUser(activeUser);
         setAuthLoading(false);
 
-        const localApps = hydrateAppsFromLocal(firebaseUser.uid);
+        const localApps = hydrateAppsFromLocal(activeUser.uid);
         try {
           const q = query(
             collection(db, 'apps'),
-            where('uid', '==', firebaseUser.uid)
+            where('uid', '==', activeUser.uid)
           );
           const snap2 = await getDocs(q);
           const cloudApps = snap2.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -101,7 +114,7 @@ export function AuthProvider({ children }) {
             (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
           );
           setApps(merged);
-          saveLocalProjects(firebaseUser.uid, merged);
+          saveLocalProjects(activeUser.uid, merged);
         } catch {
           setApps(localApps);
         }
@@ -121,6 +134,8 @@ export function AuthProvider({ children }) {
           setRegisteredUsers([]);
         }
       } else {
+        // Ignore the first null tick while Firebase restores session after redirect
+        if (auth.currentUser) return;
         setUser(null);
         hydrateAppsFromLocal('guest');
         setRegisteredUsers([]);
@@ -135,8 +150,24 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  /** Redirect flow avoids COOP popup errors on Vercel / modern browsers. */
-  const loginWithGoogle = () => signInWithRedirect(auth, googleProvider);
+  /** Popup first (same as email login). Redirect only if popup is blocked. */
+  const loginWithGoogle = async () => {
+    await ensureFirebase();
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      const code = err?.code || '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        throw err;
+      }
+      if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+        try { sessionStorage.setItem('oa_google_redirect', '1'); } catch {}
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
+      throw err;
+    }
+  };
   const loginWithEmail = (email, password) => signInWithEmailAndPassword(auth, email, password);
   const signUpWithEmail = async (email, password, extra = {}) => {
     const cred = await createUserWithEmailAndPassword(auth, email, password);

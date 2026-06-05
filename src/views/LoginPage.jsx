@@ -29,15 +29,35 @@ export default function LoginPage() {
   };
 
   useEffect(() => {
+    try {
+      const authErr = sessionStorage.getItem('oa_auth_error');
+      if (authErr) {
+        sessionStorage.removeItem('oa_auth_error');
+        setError(authErr);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
     if (!authLoading && user) navigate(afterAuth(), { replace: true });
-  }, [user, authLoading]);
+  }, [user, authLoading, navigate]);
 
   const handleGoogle = async () => {
     setLoading(true); setError('');
-    try { await loginWithGoogle(); }
-    catch (e) {
+    try {
+      await loginWithGoogle();
+      // Popup path: stay on page; AuthContext onAuthStateChanged sets user → useEffect navigates
+    } catch (e) {
+      const code = e?.code || '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        setError('Google sign-in was cancelled.');
+      } else if (code === 'auth/account-exists-with-different-credential') {
+        setError('This email is already registered with password. Sign in with email instead.');
+      } else {
+        setError(e.message || 'Google sign-in failed. Try email login or allow popups for this site.');
+      }
+    } finally {
       setLoading(false);
-      setError(e.code === 'auth/popup-blocked' ? 'Popups blocked — please allow popups for this site.' : e.message || 'Sign-in failed.');
     }
   };
 
