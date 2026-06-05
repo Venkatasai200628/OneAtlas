@@ -1,0 +1,30 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Public read so invite recipients can load shared app specs (write requires login)
+    match /appInvites/{inviteId} {
+      allow read: if true;
+      allow create, update: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+
+    // Profile read for "invited by …" on login page; users may only write their own doc
+    match /users/{userId} {
+      allow read: if true;
+      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /apps/{appId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // Deny everything else (must be LAST — do not put outside this block)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

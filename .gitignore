@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+
+# Environment & secrets (never commit — set these in Vercel dashboard instead)
+.env
+.env.*
+.env.example
+.env.local
+.env.local.example
+
+# Build outputs (Vercel rebuilds these — never commit)
+dist/
+.next/
+out/
+build/
+.vercel/
+public/assets/
+public/index.html
+
+# Prisma generated client (regenerated on install)
+generated/
+
+# Logs & debug
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+.cursor/
+
+# TypeScript
+*.tsbuildinfo
+
+# Test / coverage
+coverage/
+
+# Misc
+*.local
