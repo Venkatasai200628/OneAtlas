@@ -1,6 +1,6 @@
 
 import { createContext, useContext, useEffect } from 'react';
-import { auth, googleProvider, db } from '@/lib/firebase';
+import { auth, googleProvider, db, ensureFirebase } from '@/lib/firebase';
 import {
   signInWithRedirect,
   getRedirectResult,
@@ -30,13 +30,31 @@ export function AuthProvider({ children }) {
   const hydrateAppsFromLocal = useStore(s => s.hydrateAppsFromLocal);
 
   useEffect(() => {
-    getRedirectResult(auth).catch((err) => {
-      if (err?.code && err.code !== 'auth/null-user') {
-        console.warn('[auth] Google redirect sign-in:', err.code, err.message);
-      }
-    });
+    let unsub = () => {};
+    let cancelled = false;
 
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+    (async () => {
+      try {
+        await ensureFirebase();
+      } catch (err) {
+        if (!cancelled) {
+          console.error('[auth] Firebase init failed:', err);
+          setAuthLoading(false);
+        }
+        return;
+      }
+
+      try {
+        await getRedirectResult(auth);
+      } catch (err) {
+        if (err?.code && err.code !== 'auth/null-user') {
+          console.warn('[auth] Google redirect sign-in:', err.code, err.message);
+        }
+      }
+
+      if (cancelled) return;
+
+      unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
 
         const userRef = doc(db, 'users', firebaseUser.uid);
@@ -108,8 +126,13 @@ export function AuthProvider({ children }) {
         setRegisteredUsers([]);
         setAuthLoading(false);
       }
-    });
-    return unsub;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      unsub();
+    };
   }, []);
 
   /** Redirect flow avoids COOP popup errors on Vercel / modern browsers. */

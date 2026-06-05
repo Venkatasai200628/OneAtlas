@@ -1,5 +1,5 @@
 
-import { db } from './firebase';
+import { db, ensureFirebase } from './firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 
 function storageKey(instanceId) {
@@ -60,6 +60,7 @@ export async function persistInvitePayload(instanceId, payload) {
     return { ok: false, error: 'Missing app id or payload' };
   }
 
+  await ensureFirebase();
   saveInvitePayload(instanceId, payload);
 
   const docData = forFirestore({
@@ -103,6 +104,7 @@ export async function persistInvitePayload(instanceId, payload) {
 export async function fetchInvitePayload(instanceId) {
   if (!instanceId) return { payload: null };
 
+  await ensureFirebase();
   const local = loadInvitePayload(instanceId);
   if (local?.intent && local?.appSpec) {
     return { payload: local };

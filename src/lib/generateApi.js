@@ -1,7 +1,7 @@
 
 import { runLocalPipeline, runPlanPipeline } from '@/lib/localPipeline';
 import { filterProviderKeysByPlan, getAllowedProvidersForPlan } from '../../lib/planProviders.js';
-import { auth } from '@/lib/firebase';
+import { auth, ensureFirebase } from '@/lib/firebase';
 
 function hasAnyProviderKey(keys = {}) {
   return Object.values(keys).some(k => typeof k === 'string' && k.trim().length > 0);
@@ -10,6 +10,7 @@ function hasAnyProviderKey(keys = {}) {
 const API_BASE = '';
 
 async function buildAuthHeaders() {
+  await ensureFirebase();
   const user = auth.currentUser;
   if (!user) return {};
   try {
