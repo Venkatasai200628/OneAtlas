@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "One Atlas API",
-  description: "Server API for One Atlas",
+  title: "OneAtlas — AI App Generator",
+  description: "Describe your app. OneAtlas builds and deploys it.",
 };
 
+/** API-only root layout — UI is the Vite SPA served from public/index.html */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
